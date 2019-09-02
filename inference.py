@@ -129,7 +129,15 @@ if __name__ == '__main__':
     parser.add_argument('--is_GL', action="store_true", help='Whether to do Giffin & Lim inference or not ')
     parser.add_argument('--is_melout', action="store_true", help='Whether to save melspectrogram file or not ')
     parser.add_argument('--is_metaout', action="store_true", help='Whether to save metadata.csv file for (mel, text) tuple or not ')
-
+    distributed = parser.add_argument_group('distributed setup')
+# distributed.add_argument('--distributed-run', default=True, type=bool,
+#                          help='enable distributed run')
+    distributed.add_argument('--rank', default=0, type=int,
+                             help='Rank of the process, do not set! Done by multiproc module')
+    distributed.add_argument('--world-size', default=0, type=int,
+                             help='Rank of the process, do not set! Done by multiproc module')
+    distributed.add_argument('--n_gpus', default=0, type=int,
+                             help='Rank of the process, do not set! Done by multiproc module')
     args = parser.parse_args()
     hparams = create_hparams(args.hparams)
     hparams.sampling_rate = 24000
