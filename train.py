@@ -59,7 +59,7 @@ def prepare_dataloaders(hparams):
     train_sampler = DistributedSampler(trainset) \
         if hparams.distributed_run else None
 
-    train_loader = DataLoader(trainset, num_workers=1, shuffle=False,
+    train_loader = DataLoader(trainset, num_workers=0, shuffle=False,
                               sampler=train_sampler,
                               batch_size=hparams.batch_size, pin_memory=False,
                               drop_last=True, collate_fn=collate_fn)
@@ -125,7 +125,7 @@ def validate(model, criterion, valset, iteration, batch_size, n_gpus,
     model.eval()
     with torch.no_grad():
         val_sampler = DistributedSampler(valset) if distributed_run else None
-        val_loader = DataLoader(valset, sampler=val_sampler, num_workers=1,
+        val_loader = DataLoader(valset, sampler=val_sampler, num_workers=0,
                                 shuffle=False, batch_size=batch_size,
                                 pin_memory=False, collate_fn=collate_fn)
 

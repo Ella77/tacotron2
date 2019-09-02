@@ -8,31 +8,35 @@ def create_hparams(hparams_string=None, verbose=False):
         # Experiment Parameters        #
         ################################
         epochs=270,
-        iters_per_checkpoint=500,
+        iters_per_checkpoint=2,
         seed=1234,
         dynamic_loss_scaling=True,
-        fp16_run=False,
-        distributed_run=False,
+        fp16_run=True,
+        distributed_run=True,
 
         dist_backend="nccl",
         dist_url="tcp://localhost:54321",
         cudnn_enabled=True,
         cudnn_benchmark=False,
+        ignore_layers=['embedding.weight'],
 
         ################################
         # Data Parameters             #
         ################################
         load_mel_from_disk=False,
-        training_files='filelists/kss_train_filelist.txt',
-        validation_files='filelists/kss_val_filelist.txt',
-        text_cleaners=['english_cleaners'], # english_cleaners, korean_cleaners
+        training_files='final_train.txt',
+        validation_files='final_val.txt',
+        text_cleaners=['korean_cleaners'], # english_cleaners, korean_cleaners
         sort_by_length=False,
+        n_speakers=80,
+        speakers_embedding_dim=16,
+
 
         ################################
         # Audio Parameters             #
         ################################
         max_wav_value=32768.0,
-        sampling_rate=22050,
+        sampling_rate=24000,
         filter_length=1024,
         hop_length=256, # number audio of frames between stft colmns, default win_length/4
         win_length=1024, # win_length int <= n_ftt: fft window size (frequency domain), defaults to win_length = n_fft
@@ -43,7 +47,7 @@ def create_hparams(hparams_string=None, verbose=False):
         ################################
         # Model Parameters             #
         ################################
-        n_symbols = 149, # set 80 if u use korean_cleaners. set 149 if u use english_cleaners
+        n_symbols = 80, # set 80 if u use korean_cleaners. set 149 if u use english_cleaners
         symbols_embedding_dim=512,
 
         # Encoder parameters

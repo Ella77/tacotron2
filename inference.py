@@ -22,7 +22,7 @@ def plot_data(data, index, output_dir="", figsize=(16, 4)):
                         interpolation='none')
     plt.savefig(os.path.join(output_dir, 'sentence_{}.png'.format(index)))
 
-def generate_mels(hparams, checkpoint_path, sentences, cleaner, removing_silence_mel_padding, adding_silence_mel_padding, is_GL, output_dir=""):
+def generate_mels(hparams, checkpoint_path, sentences, cleaner, removing_silence_mel_padding, adding_silence_mel_padding, is_GL,speaker_id, output_dir=""):
     model = load_model(hparams)
     try:
         model = model.module
@@ -35,9 +35,9 @@ def generate_mels(hparams, checkpoint_path, sentences, cleaner, removing_silence
     for i, s in enumerate(sentences):
         sequence = np.array(text_to_sequence(s, cleaner))[None, :]
         sequence = torch.autograd.Variable(torch.from_numpy(sequence)).cuda().long()
-
+        speaker_id = torch.IntTensor([speaker_id]).cuda().long()
         stime = time.time()
-        _, mel_outputs_postnet, _, alignments = model.inference(sequence)
+        _, mel_outputs_postnet, _, alignments = model.inference(sequence,speaker_id)
         mel = mel_outputs_postnet.data.cpu().numpy()[0][:,:-removing_silence_mel_padding]
         mel = np.append(mel, np.ones((80,adding_silence_mel_padding),dtype=np.float32)*-4.0, axis=1)
         if(is_GL):
@@ -132,7 +132,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     hparams = create_hparams(args.hparams)
-    hparams.sampling_rate = 22050
+    hparams.sampling_rate = 24000
     hparams.filter_length = 1024
     hparams.hop_length = 256
     hparams.win_length = 1024
@@ -140,6 +140,6 @@ if __name__ == '__main__':
     torch.backends.cudnn.enabled = hparams.cudnn_enabled
     torch.backends.cudnn.benchmark = hparams.cudnn_benchmark
 
-    run(hparams, args.checkpoint_path, args.sentence_path, hparams.text_cleaners, args.removing_silence_mel_padding, args.adding_silence_mel_padding, args.is_GL, args.is_melout, args.is_metaout, args.output_directory)
+    run(hparams, args.checkpoint_path, args.sentence_path, hparams.text_cleaners, args.removing_silence_mel_padding, args.adding_silence_mel_padding, args.is_GL, args.is_melout, args.is_metaout, args.output_directory, args.speaker_id)
 
 

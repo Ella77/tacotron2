@@ -2,6 +2,7 @@ import torch
 import torch.distributed as dist
 from torch.nn.modules import Module
 from torch.autograd import Variable
+import numpy as np
 
 def _flatten_dense_tensors(tensors):
     """Flatten dense tensors into a contiguous 1D buffer. Assume tensors are of
@@ -14,9 +15,14 @@ def _flatten_dense_tensors(tensors):
     Returns:
         A contiguous 1D buffer containing input tensors.
     """
+    #print("len",len(tensors))
     if len(tensors) == 1:
         return tensors[0].contiguous().view(-1)
-    flat = torch.cat([t.contiguous().view(-1) for t in tensors], dim=0)
+    #y_tensor = torch.tensor(tensors[3], dtype=torch.float16)
+    #print(tensors)
+
+
+    flat = torch.cat([t.half().contiguous().view(-1) for t in tensors], dim=0)
     return flat
 
 def _unflatten_dense_tensors(flat, tensors):

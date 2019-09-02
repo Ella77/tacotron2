@@ -27,15 +27,17 @@ class TextMelLoader(torch.utils.data.Dataset):
         random.seed(1234)
         random.shuffle(self.audiopaths_and_text)
 
-    def get_mel_text_pair(self, audiopath_and_text):
+    def get_mel_text_speaker(self, audiopath_and_text):
         # separate filename and text
-        audiopath, text = audiopath_and_text[0], audiopath_and_text[1]
+        audiopath, text,speaker_id = audiopath_and_text[0], audiopath_and_text[1], audiopath_and_text[2]
+        len_text = len(text)
         text = self.get_text(text) # int_tensor[char_index, ....]
         mel = self.get_mel(audiopath) # []
-        return (text, mel)
+        return (text, mel, len_text, speaker_id)
 
     def get_mel(self, filename):
         if not self.load_mel_from_disk:
+            filename = '../tacotron2_multispeaker_pytorch/processing'+filename
             audio, sampling_rate = load_wav_to_torch(filename)
             if sampling_rate != self.stft.sampling_rate:
                 raise ValueError("{} {} SR doesn't match target {} SR".format(
@@ -58,7 +60,7 @@ class TextMelLoader(torch.utils.data.Dataset):
         return text_norm
 
     def __getitem__(self, index):
-        return self.get_mel_text_pair(self.audiopaths_and_text[index])
+        return self.get_mel_text_speaker(self.audiopaths_and_text[index])
 
     def __len__(self):
         return len(self.audiopaths_and_text)
@@ -107,5 +109,18 @@ class TextMelCollate():
             gate_padded[i, mel.size(1)-1:] = 1
             output_lengths[i] = mel.size(1)
 
+        # count number of items - characters in text
+        len_x = []
+        speaker_ids = []
+        for i in range(len(ids_sorted_decreasing)):
+            #print(i,batch[ids_sorted_decreasing[i]][3])
+            len_x.append(batch[ids_sorted_decreasing[i]][2])
+            speaker_ids.append((batch[ids_sorted_decreasing[i]][3]))
+
+        len_x = torch.Tensor(len_x)
+        speaker_ids = torch.Tensor(speaker_ids)
+
+
+
         return text_padded, input_lengths, mel_padded, gate_padded, \
-            output_lengths
+               output_lengths, len_x, speaker_ids
