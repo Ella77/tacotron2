@@ -1,7 +1,10 @@
 import numpy as np
 from scipy.io.wavfile import read
+import librosa
 import torch
+import io
 
+max_wav_value=32768.0
 
 def get_mask_from_lengths(lengths):
     max_len = torch.max(lengths).item()
@@ -16,7 +19,7 @@ def load_wav_to_torch(full_path):
 
 
 def load_filepaths_and_text(filename, split="|"):
-    with open(filename, encoding='utf-8') as f:
+    with io.open(filename, encoding='utf-8-sig') as f:
         filepaths_and_text = [line.strip().split(split) for line in f]
     return filepaths_and_text
 

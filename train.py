@@ -10,11 +10,25 @@ import torch.distributed as dist
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader
 
+#
+# from fp16_optimizer import FP16_Optimizer
+
+
 from model import Tacotron2
 from data_utils import TextMelLoader, TextMelCollate
 from loss_function import Tacotron2Loss
 from logger import Tacotron2Logger
 from hparams import create_hparams
+
+
+
+# def batchnorm_to_float(module):
+#     """Converts batch norm modules to FP32"""
+#     if isinstance(module, torch.nn.modules.batchnorm._BatchNorm):
+#         module.float()
+#     for child in module.children():
+#         batchnorm_to_float(child)
+#     return module
 
 
 def reduce_tensor(tensor, n_gpus):
@@ -42,8 +56,20 @@ def init_distributed(hparams, n_gpus, rank, group_name):
 def prepare_dataloaders(hparams):
     # Get data, data loaders and collate function ready
     trainset = TextMelLoader(hparams.training_files, hparams)
-    valset = TextMelLoader(hparams.validation_files, hparams)
+    # valset = TextMelLoader(hparams.validation_files, hparams)
+    valset = None
     collate_fn = TextMelCollate(hparams.n_frames_per_step)
+
+
+    # train_sampler = DistributedSampler(trainset) \
+    #     if hparams.distributed_run else None
+    #
+    # train_loader = DataLoader(trainset, num_workers=1, shuffle=False,
+    #                           sampler=train_sampler,
+    #                           batch_size=hparams.batch_size, pin_memory=False,
+    #                           drop_last=True, collate_fn=collate_fn)
+    # return train_loader, valset, collate_fn
+
 
     if hparams.distributed_run:
         train_sampler = DistributedSampler(trainset)
@@ -52,7 +78,8 @@ def prepare_dataloaders(hparams):
         train_sampler = None
         shuffle = True
 
-    train_loader = DataLoader(trainset, num_workers=1, shuffle=shuffle,
+    train_loader = DataLoader(trainset, num_workers=0, shuffle=shuffle,
+
                               sampler=train_sampler,
                               batch_size=hparams.batch_size, pin_memory=False,
                               drop_last=True, collate_fn=collate_fn)
@@ -73,7 +100,12 @@ def prepare_directories_and_logger(output_directory, log_directory, rank):
 def load_model(hparams):
     model = Tacotron2(hparams).cuda()
     if hparams.fp16_run:
+
+        #model = batchnorm_to_float(model.half())
+        #model.decoder.attention_layer.score_mask_value = float(finfo('float16').min)
         model.decoder.attention_layer.score_mask_value = finfo('float16').min
+
+
 
     if hparams.distributed_run:
         model = apply_gradient_allreduce(model)
@@ -94,6 +126,7 @@ def warm_start_model(checkpoint_path, model, ignore_layers):
         model_dict = dummy_dict
     model.load_state_dict(model_dict)
     return model
+
 
 
 def load_checkpoint(checkpoint_path, model, optimizer):
@@ -124,12 +157,14 @@ def validate(model, criterion, valset, iteration, batch_size, n_gpus,
     model.eval()
     with torch.no_grad():
         val_sampler = DistributedSampler(valset) if distributed_run else None
-        val_loader = DataLoader(valset, sampler=val_sampler, num_workers=1,
+        val_loader = DataLoader(valset, sampler=val_sampler, num_workers=0,
                                 shuffle=False, batch_size=batch_size,
                                 pin_memory=False, collate_fn=collate_fn)
 
         val_loss = 0.0
+        reduced_val_loss = 0.0
         for i, batch in enumerate(val_loader):
+            print(i,batch)
             x, y = model.parse_batch(batch)
             y_pred = model(x)
             loss = criterion(y_pred, y)
@@ -140,10 +175,12 @@ def validate(model, criterion, valset, iteration, batch_size, n_gpus,
             val_loss += reduced_val_loss
         val_loss = val_loss / (i + 1)
 
+
+
+            # if rank == 0:
+            #     print("Validation loss {}: {:9f}  ".format(iteration, reduced_val_loss))
+            # logger.log_validation(reduced_val_loss, model, y, y_pred, iteration)
     model.train()
-    if rank == 0:
-        print("Validation loss {}: {:9f}  ".format(iteration, reduced_val_loss))
-        logger.log_validation(reduced_val_loss, model, y, y_pred, iteration)
 
 
 def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
@@ -171,9 +208,17 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
                                  weight_decay=hparams.weight_decay)
 
     if hparams.fp16_run:
+
+        # optimizer = FP16_Optimizer(
         from apex import amp
         model, optimizer = amp.initialize(
             model, optimizer, opt_level='O2')
+        #     optimizer, dynamic_loss_scale=hparams.dynamic_loss_scaling)
+
+        from apex import amp
+        model, optimizer = amp.initialize(
+            model, optimizer, opt_level='O2')
+
 
     if hparams.distributed_run:
         model = apply_gradient_allreduce(model)
@@ -190,8 +235,9 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
     epoch_offset = 0
     if checkpoint_path is not None:
         if warm_start:
-            model = warm_start_model(
-                checkpoint_path, model, hparams.ignore_layers)
+
+            model = warm_start_model(checkpoint_path, model ,hparams.ignore_layers)
+
         else:
             model, optimizer, _learning_rate, iteration = load_checkpoint(
                 checkpoint_path, model, optimizer)
@@ -205,6 +251,7 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
     # ================ MAIN TRAINNIG LOOP! ===================
     for epoch in range(epoch_offset, hparams.epochs):
         print("Epoch: {}".format(epoch))
+        #print( "train loading start")
         for i, batch in enumerate(train_loader):
             start = time.perf_counter()
             for param_group in optimizer.param_groups:
@@ -220,14 +267,20 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
             else:
                 reduced_loss = loss.item()
             if hparams.fp16_run:
+
+                # optimizer.backward(loss)
+                # grad_norm = optimizer.clip_fp32_grads(hparams.grad_clip_thresh)
                 with amp.scale_loss(loss, optimizer) as scaled_loss:
-                    scaled_loss.backward()
+                  scaled_loss.backward()
             else:
                 loss.backward()
 
+
             if hparams.fp16_run:
                 grad_norm = torch.nn.utils.clip_grad_norm_(
-                    amp.master_params(optimizer), hparams.grad_clip_thresh)
+                amp.master_params(optimizer), hparams.grad_clip_thresh)
+
+ 
                 is_overflow = math.isnan(grad_norm)
             else:
                 grad_norm = torch.nn.utils.clip_grad_norm_(
@@ -235,7 +288,15 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
 
             optimizer.step()
 
-            if not is_overflow and rank == 0:
+
+            overflow = optimizer.overflow if hparams.fp16_run else False
+
+#             #
+#             # if not is_overflow and rank==0:
+            if not overflow and not math.isnan(reduced_loss) and rank == 0:
+# =======
+#             if not is_overflow and rank == 0:
+# >>>>>>> master
                 duration = time.perf_counter() - start
                 print("Train loss {} {:.6f} Grad Norm {:.6f} {:.2f}s/it".format(
                     iteration, reduced_loss, grad_norm, duration))
@@ -243,9 +304,11 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
                     reduced_loss, grad_norm, learning_rate, duration, iteration)
 
             if not is_overflow and (iteration % hparams.iters_per_checkpoint == 0):
-                validate(model, criterion, valset, iteration,
-                         hparams.batch_size, n_gpus, collate_fn, logger,
-                         hparams.distributed_run, rank)
+
+                # validate(model, criterion, valset, iteration,
+                #          hparams.batch_size, n_gpus, collate_fn, logger,
+                #          hparams.distributed_run, rank)
+
                 if rank == 0:
                     checkpoint_path = os.path.join(
                         output_directory, "checkpoint_{}".format(iteration))

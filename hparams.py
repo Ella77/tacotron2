@@ -1,6 +1,4 @@
 import tensorflow as tf
-from text import symbols
-
 
 def create_hparams(hparams_string=None, verbose=False):
     """Create model hyperparameters. Parse nondefault from given string."""
@@ -9,25 +7,29 @@ def create_hparams(hparams_string=None, verbose=False):
         ################################
         # Experiment Parameters        #
         ################################
-        epochs=500,
-        iters_per_checkpoint=1000,
+        epochs=270,
+        iters_per_checkpoint=500,
         seed=1234,
         dynamic_loss_scaling=True,
         fp16_run=False,
         distributed_run=False,
+
         dist_backend="nccl",
         dist_url="tcp://localhost:54321",
         cudnn_enabled=True,
         cudnn_benchmark=False,
+
         ignore_layers=['embedding.weight'],
+
 
         ################################
         # Data Parameters             #
         ################################
         load_mel_from_disk=False,
-        training_files='filelists/ljs_audio_text_train_filelist.txt',
-        validation_files='filelists/ljs_audio_text_val_filelist.txt',
-        text_cleaners=['english_cleaners'],
+        training_files='data/new.txt',
+        validation_files='',
+        text_cleaners=['korean_cleaners'], # english_cleaners, korean_cleaners
+        sort_by_length=False,
 
         ################################
         # Audio Parameters             #
@@ -35,8 +37,8 @@ def create_hparams(hparams_string=None, verbose=False):
         max_wav_value=32768.0,
         sampling_rate=22050,
         filter_length=1024,
-        hop_length=256,
-        win_length=1024,
+        hop_length=256, # number audio of frames between stft colmns, default win_length/4
+        win_length=1024, # win_length int <= n_ftt: fft window size (frequency domain), defaults to win_length = n_fft
         n_mel_channels=80,
         mel_fmin=0.0,
         mel_fmax=8000.0,
@@ -44,7 +46,7 @@ def create_hparams(hparams_string=None, verbose=False):
         ################################
         # Model Parameters             #
         ################################
-        n_symbols=len(symbols),
+        n_symbols = 80, # set 80 if u use korean_cleaners. set 149 if u use english_cleaners
         symbols_embedding_dim=512,
 
         # Encoder parameters
@@ -81,7 +83,7 @@ def create_hparams(hparams_string=None, verbose=False):
         learning_rate=1e-3,
         weight_decay=1e-6,
         grad_clip_thresh=1.0,
-        batch_size=64,
+        batch_size=16,
         mask_padding=True  # set model's padded outputs to padded values
     )
 
